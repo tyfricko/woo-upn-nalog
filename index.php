@@ -146,14 +146,13 @@ namespace WooCart\UPNalog {
         /**
          * Output for the order received page.
          *
-         * @param int $order_id Order ID.
+         * @param object $order WC_Order.
          */
-        public function upn_page($order_id)
+        public function upn_page($order)
         {
 
             echo '</br>';
             echo '<h2 class="woocommerce-column__title">UPN Nalog</h2>';
-            $order = wc_get_order($order_id);
             $this->genUPNDescription($order);
             $this->genUPN($order);
             if ($this->instructions) {
@@ -169,7 +168,7 @@ namespace WooCart\UPNalog {
             // Only show if not paid yet
             $order_id = \WC()->session->get('order_awaiting_payment');
             if ($order_id != null) {
-                $this->upn_page($order_id);
+                $this->upn_page(wc_get_order($order_id));
             }
         }
     }
