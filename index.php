@@ -150,13 +150,14 @@ namespace WooCart\UPNalog {
          */
         public function upn_page($order)
         {
-
-            echo '</br>';
-            echo '<h2 class="woocommerce-column__title">UPN Nalog</h2>';
-            $this->genUPNDescription($order);
-            $this->genUPN($order);
-            if ($this->instructions) {
-                echo wp_kses_post(wpautop(wptexturize(wp_kses_post($this->instructions))));
+			if ('bacs' === $order->get_payment_method() && $order->has_status('on-hold')) {
+                echo '</br>';
+                echo '<h2 class="woocommerce-column__title">UPN Nalog</h2>';
+                $this->genUPNDescription($order);
+                $this->genUPN($order);
+                if ($this->instructions) {
+                    echo wp_kses_post(wpautop(wptexturize(wp_kses_post($this->instructions))));
+                }
             }
         }
 
