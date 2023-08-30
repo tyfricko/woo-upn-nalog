@@ -65,7 +65,7 @@ namespace WooCart\UPNalog {
                 ->setAmount($order->get_total())
                 ->setCode(apply_filters('upn_code', "OTHR"))
                 ->setReference(sprintf(apply_filters('upn_reference', "SI00 %s"), $order->get_order_number()))
-                ->setDueDate(new \DateTime($order->order_date))
+                ->setDueDate(new \DateTime($order->get_date_created()))
                 ->setPurpose(sprintf(apply_filters('upn_purpose', 'Plačilo naročila %s'), $order->get_order_number()))
                 ->png();
 
