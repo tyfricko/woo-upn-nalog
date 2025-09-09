@@ -1,5 +1,16 @@
 {
+    "name": "tyfricko/woo-upn-nalog",
+    "description": "WooCommerce plugin for generating UPN payment slips with QR codes for Slovenian banking standards",
+    "type": "wordpress-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Matej Zlatič",
+            "homepage": "https://matejzlatic.com"
+        }
+    ],
     "require": {
-        "media24si/upn-generator": "^2.0"
+        "media24si/upn-generator": "^3.0",
+        "endroid/qr-code": "^5.0"
     }
 }

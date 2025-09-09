@@ -2,39 +2,54 @@
 
 namespace Media24si\UpnGenerator;
 
+use Endroid\QrCode\Builder\Builder;
+use Endroid\QrCode\Encoding\Encoding;
+use Endroid\QrCode\ErrorCorrectionLevel;
 use InvalidArgumentException;
 
 class UpnGenerator
 {
     private string $payer_name;
+
     private string $payer_address;
+
     private string $payer_post;
 
     private string $receiver_name;
+
     private string $receiver_address;
+
     private string $receiver_post;
+
     private string $receiver_iban;
+
     private string $reference;
 
     private float $amount;
-    private string $code;
-    private string $purpose = '';
-    private \DateTime $due_date;
 
-    private const FONT = __DIR__ . '/courbd.ttf';
+    private string $code;
+
+    private string $purpose = '';
+
+    private ?\DateTime $due_date = null;
+
+    private const FONT = __DIR__.'/courbd.ttf';
+
     private const FONT_SIZE = 17;
+
     private const FONT_SMALL = 11;
 
-    private $image;
-    private $color;
+    private \GdImage $image;
+
+    private int $color;
 
     public function __construct()
     {
-        $this->image = imagecreatefrompng(__DIR__ . '/upn_sl.png');
+        $this->image = imagecreatefrompng(__DIR__.'/upn_sl.png');
         $this->color = imagecolorallocate($this->image, 0x00, 0x00, 0x00);
     }
 
-    public function gdResource()
+    public function gdResource(): \GdImage
     {
         $this->writeText(697, 170, $this->payer_name ?? '');
         $this->writeText(697, 201, $this->payer_address ?? '');
@@ -52,21 +67,23 @@ class UpnGenerator
         $this->writeText(30, 430, $this->receiver_address ?? '', self::FONT_SMALL);
         $this->writeText(30, 455, $this->receiver_post ?? '', self::FONT_SMALL);
 
-        $this->writeText(418, 400, $this->getFormatedReceiverIban() ?? '');
-        $this->writeText(30, 300, $this->getFormatedReceiverIban() ?? '', self::FONT_SMALL);
+        $this->writeText(418, 400, $this->getFormattedReceiverIban() ?? '');
+        $this->writeText(30, 300, $this->getFormattedReceiverIban() ?? '', self::FONT_SMALL);
 
         $this->writeText(418, 451, $this->getReferencePrefix());
         $this->writeText(528, 451, $this->getReferenceSuffix());
-        $this->writeText(30, 351, $this->getFormatedReference(), self::FONT_SMALL);
+        $this->writeText(30, 351, $this->getFormattedReference(), self::FONT_SMALL);
 
         $this->writeText(528, 340, $this->purpose ?? '');
         $this->writeText(30, 165, $this->purpose ?? '', 10);
 
-        $this->writeText(1155, 340, $this->due_date->format('d.m.Y'));
-        $this->writeText(30, 195, $this->due_date->format('d.m.Y'), self::FONT_SMALL);
+        if ($this->due_date) {
+            $this->writeText(1155, 340, $this->due_date->format('d.m.Y'));
+            $this->writeText(30, 195, $this->due_date->format('d.m.Y'), self::FONT_SMALL);
+        }
 
-        $this->writeText(110, 247, '***' . $this->getFormatedPrice(), self::FONT_SMALL);
-        $this->writeText(750, 285, '***' . $this->getFormatedPrice());
+        $this->writeText(110, 247, '***'.$this->getFormattedPrice(), self::FONT_SMALL);
+        $this->writeText(750, 285, '***'.$this->getFormattedPrice());
 
         $this->writeText(418, 340, $this->code ?? '');
 
@@ -99,18 +116,16 @@ class UpnGenerator
         return $img;
     }
 
-    public function getQRCode()
+    public function getQRCode(): \GdImage
     {
-        $qrEncoder = \QR_Code\Encoder\Encoder::factory(QR_ECLEVEL_M, 3, 0);
-        $qrEncoder->version = 15;
-
-        $tab = $qrEncoder->encode($this->getQRCodeText());
-
-        return \QR_Code\Encoder\Image::image(
-            $tab,
-            min(max(1, 3), (int)(QR_PNG_MAXIMUM_SIZE / (count($tab)))),
-            0
-        );
+        return Builder::create()
+            ->data($this->getQRCodeText())
+            ->errorCorrectionLevel(ErrorCorrectionLevel::Medium)
+            ->encoding(new Encoding('ISO-8859-2'))
+            ->writer(new PngWriter())
+            ->size(400)
+            ->build()
+            ->getImage();
     }
 
     public function getQRCodeText(): string
@@ -118,18 +133,18 @@ class UpnGenerator
         $text = [
             'UPNQR',
             '',
-            '    ',
+            '',
             '',
             '',
             $this->payer_name ?? '',
             $this->payer_address ?? '',
             $this->payer_post ?? '',
-            sprintf('%011d', $this->amount * 100) ?? '',
+            sprintf('%011d', round($this->amount * 100, 2)) ?? '',
             '',
             '',
             $this->code ?? '',
             $this->purpose ?? '',
-            $this->due_date->format('d.m.Y') ?? '',
+            $this->due_date?->format('d.m.Y') ?? '',
             $this->receiver_iban ?? '',
             $this->reference ?? '',
             $this->receiver_name ?? '',
@@ -137,26 +152,25 @@ class UpnGenerator
             $this->receiver_post ?? '',
         ];
 
-        array_walk($text, fn(&$i) => $i = trim($i));
-        $text = implode("\n", $text) . "\n";
-        $text .= mb_strlen($text) . "\n"; // append control code
+        $text = implode("\n", array_map('trim', $text))."\n";
+        $text .= mb_strlen($text)."\n"; // append control code
 
         return $text;
     }
 
-    public function getFormatedPrice(): string
+    public function getFormattedPrice(): string
     {
         return number_format($this->amount, 2, ',', '.');
     }
 
-    public function getFormatedReceiverIban(): string
+    public function getFormattedReceiverIban(): string
     {
         return wordwrap($this->receiver_iban, 4, ' ', true);
     }
 
-    public function getFormatedReference(): string
+    public function getFormattedReference(): string
     {
-        return $this->getReferencePrefix() . ' ' . $this->getReferenceSuffix();
+        return $this->getReferencePrefix().' '.$this->getReferenceSuffix();
     }
 
     public function getReferencePrefix(): string
@@ -303,7 +317,7 @@ class UpnGenerator
 
     public function setCode(string $code): self
     {
-        if ( strlen($code) !== 4 ) {
+        if (strlen($code) !== 4) {
             throw new InvalidArgumentException('CODE must be 4 charatcers');
         }
         $this->code = strtoupper($code);
@@ -328,7 +342,7 @@ class UpnGenerator
         return $this->due_date;
     }
 
-    public function setDueDate(\DateTime $due_date): self
+    public function setDueDate(?\DateTime $due_date): self
     {
         $this->due_date = $due_date;
 

@@ -1,17 +1,34 @@
 <?php
 /*
 Plugin Name: UPN plačilni nalog
-Plugin URI: https://woocart.com
+Plugin URI: https://matejzlatic.com
 Description: Doda UPN plačilni nalog s QR kodo v vašo WooCommerce trgovino.
-Version: 1.1.0
-Author: WooCart
-Author Email: info@woocart.com
+Version: 1.3.0
+Author: Matej Zlatic
+Author URI: https://matejzlatic.com
 License: GPLv2 or later
- */
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: woocommerce-upn
+Domain Path: /languages
+Requires at least: 6.0
+Tested up to: 6.8
+Requires PHP: 8.1
+Requires Plugins: woocommerce
+WC requires at least: 7.9
+WC tested up to: 10.2
+Update URI: false
+*/
 
 namespace WooCart\UPNalog {
 
     require_once "vendor/autoload.php";
+
+    // Declare HPOS compatibility
+    add_action('before_woocommerce_init', function() {
+        if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+        }
+    });
 
     class UPN
     {
@@ -38,30 +55,16 @@ namespace WooCart\UPNalog {
             }
         }
 
-        public function genUPN($order)
+        public function genUPN($order, $printTag = true)
         {
-
-            if (empty($this->account_details)) {
-                throw Exception("Empty accoutn details for BACS.");
-                return;
-            }
-
-            $bacs_accounts = apply_filters('woocommerce_bacs_accounts', $this->account_details, $order->get_id());
-
-            $bacs_account = (object) $bacs_accounts[0];
-
-            $png = (new \Media24si\UpnGenerator\UpnGenerator())
-                ->setPayerName(sprintf("%s %s", $order->get_formatted_billing_full_name(), $order->get_billing_last_name()))
+            $pngBinary = (new \Media24si\UpnGenerator\UpnGenerator())
+                ->setPayerName(sprintf("%s %s", $order->get_billing_first_name(), $order->get_billing_last_name()))
                 ->setPayerAddress($order->get_billing_address_1())
                 ->setPayerPost(sprintf("%s %s", $order->get_billing_postcode(), $order->get_billing_city()))
-                ->setReceiverName($bacs_account->account_name)
+                ->setReceiverName($this->account_details[0]['account_name'])
                 ->setReceiverAddress(WC()->countries->get_base_address())
-                ->setReceiverPost(sprintf(
-                    "%s %s",
-                    WC()->countries->get_base_city(),
-                    WC()->countries->get_base_postcode()
-                ))
-                ->setReceiverIban(preg_replace('/\s+/', '', $bacs_account->iban))
+                ->setReceiverPost(sprintf("%s %s", WC()->countries->get_base_city(), WC()->countries->get_base_postcode()))
+                ->setReceiverIban(preg_replace('/\s+/', '', $this->account_details[0]['iban']))
                 ->setAmount($order->get_total())
                 ->setCode(apply_filters('upn_code', "OTHR"))
                 ->setReference(sprintf(apply_filters('upn_reference', "SI00 %s"), $order->get_order_number()))
@@ -69,18 +72,17 @@ namespace WooCart\UPNalog {
                 ->setPurpose(sprintf(apply_filters('upn_purpose', 'Plačilo naročila %s'), $order->get_order_number()))
                 ->png();
 
-            // Check for gd errors / buffer errors
-            if (!empty($png)) {
-
-                $data = base64_encode($png);
-
-                // Check for base64 errors
-                if ($data !== false) {
-
-                    // Success
-                    echo "<br/><img src='data:image/png;base64,$data'><br/>";
-                }
+            if (empty($pngBinary)) {
+                return '';
             }
+
+            $base64 = base64_encode($pngBinary);
+
+            if ($printTag) {
+                echo "<br/><img src='data:image/png;base64,{$base64}'><br/>";
+            }
+
+            return $base64;
         }
 
         public function genUPNDescription($order)
@@ -133,13 +135,35 @@ namespace WooCart\UPNalog {
          */
         public function upn_instructions($order, $sent_to_admin, $plain_text = false)
         {
-
+    
             if (!$sent_to_admin && 'bacs' === $order->get_payment_method() && $order->has_status('on-hold')) {
                 if ($this->instructions) {
                     echo wp_kses_post(wpautop(wptexturize($this->instructions)) . PHP_EOL);
                 }
+    
                 $this->genUPNDescription($order);
-                $this->genUPN($order);
+    
+                // Generate QR but do not print inline in the email
+                $base64 = $this->genUPN($order, false);
+                if ($base64) {
+                    $png = base64_decode($base64);
+    
+                    add_filter('woocommerce_email_attachments', function ($attachments, $object) use ($png) {
+                        if (!empty($png)) {
+                            // Create a temporary file name
+                            $filename = tempnam(sys_get_temp_dir(), '') . '.png';
+                            $gdImg = imagecreatefromstring($png);
+                            if ($gdImg !== false) {
+                                imagepng($gdImg, $filename);
+                                imagedestroy($gdImg);
+                                $attachments[] = $filename;
+                            }
+                        }
+                        return $attachments;
+                    }, 10, 2);
+    
+                    echo wp_kses_post('<p>QR koda UPN je priložena kot slika v priponki tega e‑sporočila.</p>');
+                }
             }
         }
 
